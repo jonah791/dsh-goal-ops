@@ -1,0 +1,4 @@
+- insert:
+    - id: agent-goal-ops
+      name: dsh-goal-ops
+      config: {}
