@@ -78,8 +78,14 @@ export function apply(ctx: Context, config: Config): void {
         properties: { ok: { type: 'boolean', required: true }, result: { type: 'json', required: true } },
       },
       render: (_a, v) => {
-        const r = (v.result ?? {}) as { error?: string; abandoned?: boolean; goal?: { id?: string; phase?: string; code?: string; message?: string }; note?: string }
-        if (!v.ok) return [{ type: 'text', text: '✗ ' + (r.error ?? '失败') }]
+        const r = (v.result ?? {}) as { error?: string; hint?: string; abandoned?: boolean; goal?: { id?: string; phase?: string; code?: string; message?: string }; note?: string }
+        if (!v.ok) {
+          // hint 是「下一步怎么走」的唯一指引（execute 在 phase 门 / CAS 分支产出）——丢了它，
+          // 看见错误的人只能靠猜。展示层必须与数据层同宽（2026-10-04 实测缺口：数据层有、render 丢）。
+          const lines = ['✗ ' + (r.error ?? '失败')]
+          if (r.hint) lines.push(r.hint)
+          return [{ type: 'text', text: lines.join('\n') }]
+        }
         const g = r.goal ?? {}
         return [{ type: 'text', text: `已放弃 ${g.id} [${g.phase}] code=${g.code} — ${g.message ?? ''}\n${r.note ?? ''}` }]
       },

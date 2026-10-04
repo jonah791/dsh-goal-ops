@@ -137,6 +137,30 @@ test('不静默成功：goals.get 抛错 / goals.block 抛错 ⇒ ok:false 且�
   assert.match(r2.result.error, /block 炸了/)
 })
 
+test('render 层：失败分支必须把 hint 送到眼前（数据层有 ⇒ 展示层不得丢）', async () => {
+  // 缺口来源：上面「phase 非 active」只断言 r.result.hint（数据层），从不调 render ⇒
+  // 展示层裸奔。本测试把判据打在 render 的**输出文本**上——render 丢字段时它会红。
+  const h = harness({ goal: { ...ACTIVE, phase: 'paused' } })
+  const r = await h.run({ reason: '随便' })
+  assert.equal(r.ok, false)
+  assert.ok(r.result.hint, '前提：数据层确实产出了 hint（否则本测试测的不是同一件事）')
+  const tool = h.tools.get('goal_abandon')
+  const text = tool.output.render({ reason: '随便' }, r).map((p) => p.text).join('\n')
+  assert.match(text, /只有 active 的 goal 可放弃/, '错误文案必须在')
+  assert.match(text, /update_goal action=resume/, 'hint 的行动指引必须真的到眼前——这是本测试的要害')
+})
+
+test('render 层：正路径带出 id/phase/code/message 与反悔指引', async () => {
+  const h = harness()
+  const r = await h.run({ reason: '主线改了' })
+  const tool = h.tools.get('goal_abandon')
+  const text = tool.output.render({ reason: '主线改了' }, r).map((p) => p.text).join('\n')
+  assert.match(text, /g-1/)
+  assert.match(text, /blocked/)
+  assert.match(text, /abandoned/)
+  assert.match(text, /update_goal action=resume/, '反悔路径必须在场')
+})
+
 test('enabled=false ⇒ 挂载但不贡献工具（配置被消费）', () => {
   const tools = new Map()
   const logger = Object.assign(() => logger, { info() {}, warn() {}, error() {}, debug() {} })

@@ -119,11 +119,12 @@
 | A8 | `get` / `block` 抛错 ⇒ `ok:false` + 原因可见 | 同文件「不静默成功」 | ✓ 已实测 |
 | A9 | `enabled=false` ⇒ 挂载但零工具（配置被消费） | 同文件「enabled=false」 | ✓ 已实测 |
 | A10 | 结构 / 生态 / Fabric 守卫全过 | `tests/smoke.test.mjs`（14 条） | ✓ 已实测 |
-| A11 | 全量回归 | `npm test` → 23 pass / 0 fail（rc=0，2026-10-04 11:04） | ✓ 已实测 |
-| A12 | **线上**：真实 goal 可被放弃，且放弃后自动续跑真的停止 | 挂载 + 一次真实 `goal_abandon` + 观察 driver 不再投递 | 待线上验收 |
-| A13 | **线上**：`get_goal` 读回 `phase=blocked` 且 `blockedReason.code='abandoned'` | 同上 | 待线上验收 |
-| A14 | **线上**：`update_goal action=resume` 能救回（放弃可反悔） | 同上 | 待线上验收 |
+| A11 | 全量回归 | `npm test` → **25 pass / 0 fail**（rc=0，2026-10-04 19:40 重建后） | ✓ 已实测 |
+| A12 | **线上**：真实 goal 可被放弃，且放弃后自动续跑停止 | `get_goal` 读回 `phase=blocked` + `activation=disarmed`（2026-10-04 19:42，goal-250cd5c3 rev1→2）。机制判据（driver `:165` 的输入）已满足；⚠ 行为层「不再投递」需长窗口，本轮窗口 ~30s ⇒ **未观测到投递但时长不足，不作结论** | ✓ 已实测（行为层待长窗） |
+| A13 | **线上**：`get_goal` 读回 `phase=blocked` 且 `blockedReason.code='abandoned'` | 同次读回 `blockedReason: { code: 'abandoned', message: <原因原文保留> }` | ✓ 已实测 |
+| A14 | **线上**：`update_goal action=resume` 能救回（放弃可反悔） | `resume` 成功（rev 2→3 回 `active`/`armed`），**二次放弃亦成功**（rev 3→4）⇒「放弃→救回→再放弃」完整闭环 | ✓ 已实测 |
 | A15 | 源码无跨包内部路径导入（组合优先） | `tests/smoke.test.mjs`「组合优先」 | ✓ 已实测 |
+| A16 | **render 层**：失败分支把 `hint` 送到眼前（数据层有 ⇒ 展示层不得丢） | 单测「render 层：失败分支必须把 hint 送到眼前」（先红后绿）+ 线上第二次调用输出**两行**（错误 + hint） | ✓ 已实测 |
 
 ## 8 · 与实现的关系
 
@@ -131,7 +132,7 @@
 - **Fabric 面**：`src/fabric.ts` → `lib/fabric.js`（骨架，不依赖 DSH/Cordis；Fabric 尚无 SDK）。
 - **同语义副本**：无。
 - **未实现 / 未验证（显式标注）**：
-  1. **A12–A14 未验**：本会话内 web 进程加载的是旧构建，本工具**尚不在工具面**（需挂载 + 重启）。
+  1. **A12–A14 已验**（2026-10-04 19:42，重启窗口后）：真实 goal 放弃 → 读回 `blocked`/`abandoned`/`disarmed` → `resume` 救回 → 二次放弃，全程线上取证。唯一残留是**行为层**「driver 不再投递」需长窗口观察（机制判据已满足，见 A12 备注）。
   2. **`phase` 仍是 `blocked`**：这是「不动核心」的必然代价，**是边界而非缺陷**；靠 `blockedReason.code` 区分。
   3. 未做：在**面向模型的提示文案**里区分「已放弃」与「被卡住」—— 核心的 `renderWrapupContext` 由 `tool-goal` 独占，本插件不介入（不写会话事件）。
 - **生效判据**（怎么证明真的生效）：
@@ -148,6 +149,10 @@
   3. **`catch (err)` 的 err 是 unknown** ⇒ 统一 `err instanceof Error ? err.message : String(err)` 窄化（原先直取 `.message` 不过编译）。
   4. **smoke 守卫的引号假设**：生成器用 `JSON.parse` 解析 `inject` 数组，而本仓代码风格是单引号 ⇒ 守卫假红。修法：解析前归一引号 —— **改测试适配真源**，不反过来改代码风格。
   5. **harness 参数校验层先于工具**：缺 required `reason` 的调用根本走不到本工具（`ToolArgsError`）⇒ 该测试断言的是「响亮失败」这件事本身，而非本工具返回 `ok:false`。
+
+- **2026-10-04 19:4x 线上验收 + render 缺口封闭**（重启窗口后；本轮**修正了一处判据层错误 + 推翻一条旧认知**）：
+  6. **render 丢 `hint`（数据层有、展示层丢）**：`render` 的值类型声明里缺 `hint?: string`，而 `execute` 在 phase 门 / CAS 分支产出的 `hint` 是「下一步怎么走」的唯一指引 ⇒ 被静默丢弃。**根因是判据打错了层**：旧测试只断言 `r.result.hint`（数据层），从不调 `render` ⇒ 展示层裸奔无覆盖。修法（测试驱动）：先加两条 **render 层**测试（断言 render 输出文本），失败分支那条**先红**（25 条里恰好红 1 条、正路径那条绿 ⇒ 判据有区分力当场被证明），再改实现 ⇒ `BUILD_RC=0` + 25/25 绿；线上用第二次调用（走 phase 门失败分支）验证输出为**两行**（错误 + hint）。
+  7. **认知修正：`resume` 不受人类轮限制**（推翻旧笔记）：此前记「模型无权 resume（须主人恢复）」—— 实测**证伪**。在非人类轮（守护重启后「请继续」）调 `update_goal action=resume` **直接成功**（rev 2→3 回 `active`/`armed`）。⇒ 该限制的实际作用域比工具描述窄，**旧认知不得再引用**。
 
 ## 10 · 未决问题
 
