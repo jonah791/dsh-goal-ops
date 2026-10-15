@@ -21,8 +21,13 @@
 
 **为什么值得用**：核心的目标状态机没有「放弃」这个动作（只有 complete / blocked）。但实际工作中「我决定不做了」是一个**真实且需要留痕**的状态——它既不是完成，也不该混进「等外部条件」的 blocked。本插件用 `blocked + blockedReason.code='abandoned'` 承载它：**自动续跑停止**（driver 对 `phase !== 'active'` 直接 return）、**原因可辨识**（与核心的 `model-reported` / `round-limit` 区分开），且**可反悔**（核心的 `update_goal action=resume` 接受 `blocked`）。
 
-## 工具
-- `goal_abandon`：放弃当前 goal（不动 DSH 核心包的实现方式：以 goals.block + blockedReason.code='abandoned' 承载放弃语义）。判据：phase 变 blocked 后自动续跑停止（driver 对 phase !== 'active' 直接 return）；放弃原因留在 blockedReason.message，code='abandoned' 与核心的 model-reported / round-limit 可区分。放弃可反悔——核心 update_goal action=resume 接受 blocked。
+## 工具面
+
+**工具面 1 个**（名称逐字来自 `src/index.ts` 的 `defineTool({ name })`）：
+
+| 工具 | 用途 |
+|------|------|
+| `goal_abandon` | 放弃当前 goal（**不改 DSH 核心包**：以 `goals.block` + `blockedReason.code='abandoned'` 承载放弃语义）。判据：phase 变 blocked 后自动续跑停止（driver 对 `phase !== 'active'` 直接 return）；放弃原因留在 `blockedReason.message`，`code='abandoned'` 与核心的 `model-reported` / `round-limit` **可区分**。**放弃可反悔**——核心 `update_goal action=resume` 接受 `blocked` |
 
 ## 生态契约
 
@@ -117,6 +122,12 @@ cd self-plugins/dsh-goal-ops && npm test
 - **语义可辨识**：`blockedReason.code = 'abandoned'` 与核心自己的 `model-reported` / `round-limit` **分得开**——否则「我不想做了」与「等条件」在状态里长得一样。
 - **停止自动续跑的判据在核心**：driver 对 `phase !== 'active'` 直接 return ⇒ 不需要本插件额外做任何事。
 - **放弃可反悔**：核心的 `update_goal action=resume` 接受 `blocked` ⇒ 留了回头路。
+
+## 相关文档
+
+- [`docs/semantic.md`](docs/semantic.md) —— **权威契约**（定位/反定位 · 验收表）
+- 中心仓：[alice-digital-life](https://github.com/jonah791/alice-digital-life)（本插件归 **治理层**）
+- 相关插件：[`goal-rearm`](https://github.com/jonah791/goal-rearm)（反向操作：把 disarmed 的目标接回）
 
 ## License
 
